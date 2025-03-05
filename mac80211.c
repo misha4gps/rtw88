@@ -1008,7 +1008,7 @@ static void rtw_ops_sta_rc_update(struct ieee80211_hw *hw,
 }
 
 const struct ieee80211_ops rtw_ops = {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || defined(RHEL9)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 9, 0) || defined(RHEL95)
 	.add_chanctx = ieee80211_emulate_add_chanctx,
 	.remove_chanctx = ieee80211_emulate_remove_chanctx,
 	.change_chanctx = ieee80211_emulate_change_chanctx,

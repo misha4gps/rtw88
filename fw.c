@@ -734,7 +734,7 @@ void rtw_fw_send_rssi_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || defined(RHEL9)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || defined(RHEL8)
 void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si,
 			 bool reset_ra_mask)
 #else
@@ -744,7 +744,7 @@ void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 	u8 h2c_pkt[H2C_PKT_SIZE] = {0};
 	bool disable_pt = true;
 	u32 mask_hi;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0) && !defined(RHEL9)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 18, 0) && !defined(RHEL8)
 	bool reset_ra_mask = true;
 #endif
 

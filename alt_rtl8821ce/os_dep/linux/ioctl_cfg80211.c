@@ -469,7 +469,7 @@ u8 rtw_cfg80211_ch_switch_notify(_adapter *adapter, u8 ch, u8 bw, u8 offset,
 		 0,
 #endif
 		 0, false
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || defined(RHEL9)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || defined(RHEL8)
 		 , 0
 #endif
 		);
@@ -485,7 +485,7 @@ u8 rtw_cfg80211_ch_switch_notify(_adapter *adapter, u8 ch, u8 bw, u8 offset,
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 2) && !defined(RHEL8)
 	cfg80211_ch_switch_notify(adapter->pnetdev, &chdef);
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || defined(RHEL9)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0) || defined(RHEL8)
 	cfg80211_ch_switch_notify(adapter->pnetdev, &chdef, 0, 0);
 #else
 	cfg80211_ch_switch_notify(adapter->pnetdev, &chdef, 0);

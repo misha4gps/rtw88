@@ -586,7 +586,7 @@ static void rtw8703b_pwrtrack_init(struct rtw_dev *rtwdev)
 	dm_info->txagc_remnant_ofdm[RF_PATH_A] = 0;
 }
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !defined(RHEL9)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 3, 0) && !defined(RHEL95)
 #define FIELD_PREP_CONST FIELD_PREP
 #endif
 

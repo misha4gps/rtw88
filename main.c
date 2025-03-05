@@ -1415,7 +1415,7 @@ void rtw_update_sta_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si,
 	si->ra_mask = ra_mask;
 	si->rate_id = rate_id;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || defined(RHEL9)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0) || defined(RHEL8)
 	rtw_fw_send_ra_info(rtwdev, si, reset_ra_mask);
 #else
 	rtw_fw_send_ra_info(rtwdev, si);
@@ -2310,7 +2310,7 @@ void rtw_core_deinit(struct rtw_dev *rtwdev)
 		release_firmware(wow_fw->firmware);
 
 	destroy_workqueue(rtwdev->tx_wq);
-# if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0) || defined(RHEL9)
+# if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0) || defined(RHEL8)
 	timer_delete_sync(&rtwdev->tx_report.purge_timer);
 # else
 	del_timer_sync(&rtwdev->tx_report.purge_timer);
