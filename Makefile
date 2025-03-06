@@ -20,7 +20,7 @@ else
 DEPMOD_ARGS =
 endif
 
-RHEL_VER := $(shell echo `grep '^ID_LIKE'  /etc/os-release | grep -qi 'fedora' && grep '^VERSION_ID' /etc/os-release | cut -d'"' -f2 | awk -F. '{printf("%02d%02d", $$1, $$2)}'`)
+RHEL_VER := $(shell echo `grep '^ID_LIKE'  /etc/os-release |grep -qi 'fedora' && grep '^VERSION_ID' /etc/os-release | awk -F'[.=\"]' '{printf("%02d%02d", $$3, $$4)}'`)
 ifdef RHEL_VER
 EXTRA_CFLAGS += -DRHEL8
 ifeq ($(shell test $(RHEL_VER) -ge 0905; echo $$?),0)
