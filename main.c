@@ -19,6 +19,7 @@
 #include "bf.h"
 #include "sar.h"
 #include "sdio.h"
+#include "led.h"
 
 bool rtw_disable_lps_deep_mode;
 EXPORT_SYMBOL(rtw_disable_lps_deep_mode);
@@ -137,7 +138,7 @@ u16 rtw_desc_to_bitrate(u8 desc_rate)
 	return rate.bitrate;
 }
 
-static struct ieee80211_supported_band rtw_band_2ghz = {
+static const struct ieee80211_supported_band rtw_band_2ghz = {
 	.band = NL80211_BAND_2GHZ,
 
 	.channels = rtw_channeltable_2g,
@@ -150,7 +151,7 @@ static struct ieee80211_supported_band rtw_band_2ghz = {
 	.vht_cap = {0},
 };
 
-static struct ieee80211_supported_band rtw_band_5ghz = {
+static const struct ieee80211_supported_band rtw_band_5ghz = {
 	.band = NL80211_BAND_5GHZ,
 
 	.channels = rtw_channeltable_5g,
@@ -2332,86 +2333,6 @@ void rtw_core_deinit(struct rtw_dev *rtwdev)
 }
 EXPORT_SYMBOL(rtw_core_deinit);
 
-#ifdef CONFIG_LEDS_CLASS
-
-static int rtw_led_set_blocking(struct led_classdev *led,
-				enum led_brightness brightness)
-{
-	struct rtw_dev *rtwdev = container_of(led, struct rtw_dev, led_cdev);
-
-	rtwdev->chip->ops->led_set(led, brightness);
-
-	return 0;
-}
-
-static void rtw_led_init(struct rtw_dev *rtwdev)
-{
-	static const struct ieee80211_tpt_blink rtw_tpt_blink[] = {
-		{ .throughput = 0 * 1024, .blink_time = 334 },
-		{ .throughput = 1 * 1024, .blink_time = 260 },
-		{ .throughput = 5 * 1024, .blink_time = 220 },
-		{ .throughput = 10 * 1024, .blink_time = 190 },
-		{ .throughput = 20 * 1024, .blink_time = 170 },
-		{ .throughput = 50 * 1024, .blink_time = 150 },
-		{ .throughput = 70 * 1024, .blink_time = 130 },
-		{ .throughput = 100 * 1024, .blink_time = 110 },
-		{ .throughput = 200 * 1024, .blink_time = 80 },
-		{ .throughput = 300 * 1024, .blink_time = 50 },
-	};
-	struct led_classdev *led = &rtwdev->led_cdev;
-	int err;
-
-	if (!rtwdev->chip->ops->led_set)
-		return;
-
-	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_PCIE)
-		led->brightness_set = rtwdev->chip->ops->led_set;
-	else
-		led->brightness_set_blocking = rtw_led_set_blocking;
-
-	snprintf(rtwdev->led_name, sizeof(rtwdev->led_name),
-		 "rtw88-%s", dev_name(rtwdev->dev));
-
-	led->name = rtwdev->led_name;
-	led->max_brightness = LED_ON;
-	led->default_trigger =
-		ieee80211_create_tpt_led_trigger(rtwdev->hw,
-						 IEEE80211_TPT_LEDTRIG_FL_RADIO,
-						 rtw_tpt_blink,
-						 ARRAY_SIZE(rtw_tpt_blink));
-
-	err = led_classdev_register(rtwdev->dev, led);
-	if (err) {
-		rtw_warn(rtwdev, "Failed to register the LED, error %d\n", err);
-		return;
-	}
-
-	rtwdev->led_registered = true;
-}
-
-static void rtw_led_deinit(struct rtw_dev *rtwdev)
-{
-	struct led_classdev *led = &rtwdev->led_cdev;
-
-	if (!rtwdev->led_registered)
-		return;
-
-	rtwdev->chip->ops->led_set(led, LED_OFF);
-	led_classdev_unregister(led);
-}
-
-#else
-
-static void rtw_led_init(struct rtw_dev *rtwdev)
-{
-}
-
-static void rtw_led_deinit(struct rtw_dev *rtwdev)
-{
-}
-
-#endif
-
 int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 {
 	bool sta_mode_only = false; /*rtwdev->hci.type == RTW_HCI_TYPE_SDIO;*/
@@ -2438,7 +2359,8 @@ int rtw_register_hw(struct rtw_dev *rtwdev, struct ieee80211_hw *hw)
 	ieee80211_hw_set(hw, SUPPORTS_PS);
 	ieee80211_hw_set(hw, SUPPORTS_DYNAMIC_PS);
 	ieee80211_hw_set(hw, SUPPORT_FAST_XMIT);
-	ieee80211_hw_set(hw, SUPPORTS_AMSDU_IN_AMPDU);
+	if (rtwdev->chip->amsdu_in_ampdu)
+		ieee80211_hw_set(hw, SUPPORTS_AMSDU_IN_AMPDU);
 	ieee80211_hw_set(hw, HAS_RATE_CONTROL);
 	ieee80211_hw_set(hw, TX_AMSDU);
 	ieee80211_hw_set(hw, SINGLE_SCAN_ON_ALL_BANDS);

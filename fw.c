@@ -768,18 +768,19 @@ void rtw_fw_send_ra_info(struct rtw_dev *rtwdev, struct rtw_sta_info *si)
 
 	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 
-	if (rtwdev->chip->rf_tbl[RF_PATH_C]) {
-		SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_RA_INFO_HI);
+	if (rtwdev->chip->id != RTW_CHIP_TYPE_8814A)
+		return;
 
-		mask_hi = si->ra_mask >> 32;
+	SET_H2C_CMD_ID_CLASS(h2c_pkt, H2C_CMD_RA_INFO_HI);
 
-		SET_RA_INFO_RA_MASK0(h2c_pkt, (mask_hi & 0xff));
-		SET_RA_INFO_RA_MASK1(h2c_pkt, (mask_hi & 0xff00) >> 8);
-		SET_RA_INFO_RA_MASK2(h2c_pkt, (mask_hi & 0xff0000) >> 16);
-		SET_RA_INFO_RA_MASK3(h2c_pkt, (mask_hi & 0xff000000) >> 24);
+	mask_hi = si->ra_mask >> 32;
 
-		rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
-	}
+	SET_RA_INFO_RA_MASK0(h2c_pkt, (mask_hi & 0xff));
+	SET_RA_INFO_RA_MASK1(h2c_pkt, (mask_hi & 0xff00) >> 8);
+	SET_RA_INFO_RA_MASK2(h2c_pkt, (mask_hi & 0xff0000) >> 16);
+	SET_RA_INFO_RA_MASK3(h2c_pkt, (mask_hi & 0xff000000) >> 24);
+
+	rtw_fw_send_h2c_command(rtwdev, h2c_pkt);
 }
 
 void rtw_fw_media_status_report(struct rtw_dev *rtwdev, u8 mac_id, bool connect)
@@ -1645,13 +1646,13 @@ static int  __rtw_build_rsvd_page_from_vifs(struct rtw_dev *rtwdev)
 
 static u8 *rtw_build_rsvd_page(struct rtw_dev *rtwdev, u32 *size)
 {
-	struct ieee80211_hw *hw = rtwdev->hw;
 	const struct rtw_chip_info *chip = rtwdev->chip;
-	struct sk_buff *iter;
+	struct ieee80211_hw *hw = rtwdev->hw;
 	struct rtw_rsvd_page *rsvd_pkt;
-	u32 page = 0;
-	u8 total_page = 0;
+	struct sk_buff *iter;
 	u16 page_size, page_margin, tx_desc_sz;
+	u8 total_page = 0;
+	u32 page = 0;
 	u8 *buf;
 	int ret;
 
@@ -2057,13 +2058,13 @@ static int _rtw_hw_scan_update_probe_req(struct rtw_dev *rtwdev, u8 num_probes,
 {
 	const struct rtw_chip_info *chip = rtwdev->chip;
 	struct sk_buff *skb, *tmp;
-	u8 page_offset = 1, *buf;
-	u16 page_size = chip->page_size;
 	u16 pg_addr = rtwdev->fifo.rsvd_h2c_info_addr, loc;
-	u16 buf_offset = page_size * page_offset;
 	u8 tx_desc_sz = chip->tx_pkt_desc_sz;
-	u8 page_cnt, pages;
+	u16 page_size = chip->page_size;
+	u8 page_offset = 1, *buf;
+	u16 buf_offset = page_size * page_offset;
 	unsigned int pkt_len;
+	u8 page_cnt, pages;
 	int ret;
 
 	if (rtw_fw_feature_ext_check(&rtwdev->fw, FW_FEATURE_EXT_OLD_PAGE_NUM))

@@ -710,7 +710,7 @@ static void rtw8821c_set_tx_power_index(struct rtw_dev *rtwdev)
 	int rs, path;
 
 	for (path = 0; path < hal->rf_path_num; path++) {
-		for (rs = 0; rs < RTW_RATE_SECTION_HT_3S; rs++) {
+		for (rs = 0; rs <= __RTW_RATE_SECTION_2SS_MAX; rs++) {
 			if (rs == RTW_RATE_SECTION_HT_2S ||
 			    rs == RTW_RATE_SECTION_VHT_2S)
 				continue;
@@ -1214,8 +1214,6 @@ static void rtw8821c_phy_cck_pd_set(struct rtw_dev *rtwdev, u8 new_lvl)
 			 dm_info->cck_pd_default + new_lvl * 2);
 }
 
-#ifdef CONFIG_LEDS_CLASS
-
 static void rtw8821c_led_set(struct led_classdev *led,
 			     enum led_brightness brightness)
 {
@@ -1233,8 +1231,6 @@ static void rtw8821c_led_set(struct led_classdev *led,
 
 	rtw_write32(rtwdev, REG_LED_CFG, ledcfg);
 }
-
-#endif
 
 static void rtw8821c_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 					  struct rtw_tx_pkt_info *pkt_info,
@@ -1686,9 +1682,7 @@ static const struct rtw_chip_ops rtw8821c_ops = {
 	.config_bfee		= rtw8821c_bf_config_bfee,
 	.set_gid_table		= rtw_bf_set_gid_table,
 	.cfg_csi_rate		= rtw_bf_cfg_csi_rate,
-#ifdef CONFIG_LEDS_CLASS
 	.led_set		= rtw8821c_led_set,
-#endif
 	.fill_txdesc_checksum	= rtw8821c_fill_txdesc_checksum,
 
 	.coex_set_init		= rtw8821c_coex_cfg_init,
@@ -1996,29 +1990,27 @@ const struct rtw_chip_info rtw8821c_hw_spec = {
 	.txff_size = 65536,
 	.rxff_size = 16384,
 	.rsvd_drv_pg_num = 8,
-	.band = RTW_BAND_2G | RTW_BAND_5G,
-	.page_size = TX_PAGE_SIZE,
-	.csi_buf_pg_num = 0,
-	.dig_min = 0x1c,
 	.txgi_factor = 1,
 	.is_pwr_by_rate_dec = true,
-	.rx_ldpc = false,
 	.max_power_index = 0x3f,
-	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_2,
+	.csi_buf_pg_num = 0,
+	.band = RTW_BAND_2G | RTW_BAND_5G,
+	.page_size = TX_PAGE_SIZE,
+	.dig_min = 0x1c,
+	.amsdu_in_ampdu = true,
 	.usb_tx_agg_desc_num = 3,
 	.hw_feature_report = true,
 	.c2h_ra_report_size = 7,
 	.old_datarate_fb_limit = false,
-	.tx_report_sn = true,
 	.ht_supported = true,
 	.vht_supported = true,
 	.lps_deep_mode_supported = BIT(LPS_DEEP_MODE_LCLK),
 	.sys_func_en = 0xD8,
 	.pwr_on_seq = card_enable_flow_8821c,
 	.pwr_off_seq = card_disable_flow_8821c,
+	.page_table = page_table_8821c,
 	.rqpn_table = rqpn_table_8821c,
 	.prioq_addrs = &prioq_addrs_8821c,
-	.page_table = page_table_8821c,
 	.intf_table = &phy_para_table_8821c,
 	.dig = rtw8821c_dig,
 	.rf_base_addr = {0x2800, 0x2c00},
@@ -2030,9 +2022,11 @@ const struct rtw_chip_info rtw8821c_hw_spec = {
 	.rf_tbl = {&rtw8821c_rf_a_tbl},
 	.rfe_defs = rtw8821c_rfe_defs,
 	.rfe_defs_size = ARRAY_SIZE(rtw8821c_rfe_defs),
+	.rx_ldpc = false,
 	.iqk_threshold = 8,
 	.bfer_su_max_num = 2,
 	.bfer_mu_max_num = 1,
+	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_2,
 	.max_scan_ie_len = IEEE80211_MAX_DATA_LEN,
 
 	.coex_para_ver = 0x19092746,

@@ -2,6 +2,7 @@ SHELL := /bin/sh
 KVER ?= $(if $(KERNELRELEASE),$(KERNELRELEASE),$(shell uname -r))
 KSRC ?= $(if $(KERNEL_SRC),$(KERNEL_SRC),/lib/modules/$(KVER)/build)
 FWDIR := /lib/firmware/rtw88
+JOBS ?= $(shell nproc --ignore=1)
 MODLIST := rtw_8723cs rtw_8723de rtw_8723ds rtw_8723du \
 	   rtw_8812au rtw_8814ae rtw_8814au rtw_8821au rtw_8821ce rtw_8821cs rtw_8821cu \
 	   rtw_8822be rtw_8822bs rtw_8822bu rtw_8822ce rtw_8822cs rtw_8822cu \
@@ -50,12 +51,14 @@ EXTRA_CFLAGS += -DCONFIG_RTW88_8821CE=1
 EXTRA_CFLAGS += -DCONFIG_RTW88_8822CE=1
 EXTRA_CFLAGS += -DCONFIG_RTW88_8723DE=1
 endif
+EXTRA_CFLAGS += -DCONFIG_RTW88_LEDS=1
 EXTRA_CFLAGS += -DCONFIG_RTW88_DEBUG=1
 EXTRA_CFLAGS += -DCONFIG_RTW88_DEBUGFS=1
 #EXTRA_CFLAGS += -DCONFIG_RTW88_REGD_USER_REG_HINTS
 
 obj-m		+= rtw_core.o
 rtw_core-objs	+= main.o \
+		   led.o \
 		   mac80211.o \
 		   util.o \
 		   debug.o \
@@ -193,7 +196,7 @@ rtw_usb-objs	:= usb.o
 ccflags-y += -D__CHECK_ENDIAN__
 
 all: 
-	$(MAKE) -j`nproc` -C $(KSRC) M=$$PWD modules
+	$(MAKE) -j$(JOBS) -C $(KSRC) M=$$PWD modules
 	
 install: all
 	@install -D -m 644 -t $(MODDESTDIR) *.ko
@@ -245,7 +248,7 @@ clean:
 
 sign:
 ifeq ($(NO_SKIP_SIGN), y)
-	@openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=Custom MOK/"
+	@openssl req -new -x509 -newkey rsa:2048 -keyout MOK.priv -outform DER -out MOK.der -nodes -days 36500 -subj "/CN=rtw88 driver key/"
 	@mokutil --import MOK.der
 else
 	echo "Skipping key creation"

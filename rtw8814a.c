@@ -168,6 +168,8 @@ static int rtw8814a_read_efuse(struct rtw_dev *rtwdev, u8 *log_map)
 		ether_addr_copy(efuse->addr, map->u.mac_addr);
 		break;
 	case RTW_HCI_TYPE_PCIE:
+		ether_addr_copy(efuse->addr, map->e.mac_addr);
+		break;
 	case RTW_HCI_TYPE_SDIO:
 	default:
 		/* unsupported now */
@@ -265,17 +267,17 @@ static void rtw8814a_config_cck_rx_antenna_init(struct rtw_dev *rtwdev)
 	/* CCK 2R CCA parameters */
 
 	/* Disable Ant diversity */
-	rtw_write32_mask(rtwdev, REG_RXSB, BIT(15), 0x0);
+	rtw_write32_mask(rtwdev, REG_RXSB, BIT_RXSB_ANA_DIV, 0x0);
 	/* Concurrent CCA at LSB & USB */
-	rtw_write32_mask(rtwdev, 0xa70, BIT(7), 0);
+	rtw_write32_mask(rtwdev, REG_CCA, BIT_CCA_CO, 0);
 	/* RX path diversity enable */
-	rtw_write32_mask(rtwdev, 0xa74, BIT(8), 0);
+	rtw_write32_mask(rtwdev, REG_ANTSEL, BIT_ANT_BYCO, 0);
 	/* r_en_mrc_antsel */
-	rtw_write32_mask(rtwdev, 0xa14, BIT(7), 0);
+	rtw_write32_mask(rtwdev, REG_PRECTRL, BIT_DIS_CO_PATHSEL, 0);
 	/* MBC weighting */
-	rtw_write32_mask(rtwdev, 0xa20, BIT(5) | BIT(4), 1);
+	rtw_write32_mask(rtwdev, REG_CCA_MF, BIT_MBC_WIN, 1);
 	/* 2R CCA only */
-	rtw_write32_mask(rtwdev, 0xa84, BIT(28), 1);
+	rtw_write32_mask(rtwdev, REG_CCKTX, BIT_CMB_CCA_2R, 1);
 }
 
 static void rtw8814a_phy_set_param(struct rtw_dev *rtwdev)
@@ -311,10 +313,10 @@ static void rtw8814a_phy_set_param(struct rtw_dev *rtwdev)
 	for (rf_path = 0; rf_path < rtwdev->hal.rf_path_num; rf_path++)
 		rtw_load_table(rtwdev, rtwdev->chip->rf_tbl[rf_path]);
 
-	val32 = rtw_read_rf(rtwdev, RF_PATH_A, RF_RCK1, RFREG_MASK);
-	rtw_write_rf(rtwdev, RF_PATH_B, RF_RCK1, RFREG_MASK, val32);
-	rtw_write_rf(rtwdev, RF_PATH_C, RF_RCK1, RFREG_MASK, val32);
-	rtw_write_rf(rtwdev, RF_PATH_D, RF_RCK1, RFREG_MASK, val32);
+	val32 = rtw_read_rf(rtwdev, RF_PATH_A, RF_RCK1_V1, RFREG_MASK);
+	rtw_write_rf(rtwdev, RF_PATH_B, RF_RCK1_V1, RFREG_MASK, val32);
+	rtw_write_rf(rtwdev, RF_PATH_C, RF_RCK1_V1, RFREG_MASK, val32);
+	rtw_write_rf(rtwdev, RF_PATH_D, RF_RCK1_V1, RFREG_MASK, val32);
 
 	rtw_write32_set(rtwdev, REG_RXPSEL, BIT_RX_PSEL_RST);
 
@@ -349,6 +351,34 @@ static void rtw8814a_phy_set_param(struct rtw_dev *rtwdev)
 	}
 }
 
+static void rtw8814ae_enable_rf_1_2v(struct rtw_dev *rtwdev)
+{
+	/* This is for fullsize card, because GPIO7 there is floating.
+	 * We should pull GPIO7 high to enable RF 1.2V Switch Power Supply
+	 */
+
+	/* 1. set 0x40[1:0] to 0, BIT_GPIOSEL=0, select pin as GPIO */
+	rtw_write8_clr(rtwdev, REG_GPIO_MUXCFG, BIT(1) | BIT(0));
+
+	/* 2. set 0x44[31] to 0
+	 * mode=0: data port;
+	 * mode=1 and BIT_GPIO_IO_SEL=0: interrupt mode;
+	 */
+	rtw_write8_clr(rtwdev, REG_GPIO_PIN_CTRL + 3, BIT(7));
+
+	/* 3. data mode
+	 * 3.1 set 0x44[23] to 1
+	 * sel=0: input;
+	 * sel=1: output;
+	 */
+	rtw_write8_set(rtwdev, REG_GPIO_PIN_CTRL + 2, BIT(7));
+
+	/* 3.2 set 0x44[15] to 1
+	 * output high value;
+	 */
+	rtw_write8_set(rtwdev, REG_GPIO_PIN_CTRL + 1, BIT(7));
+}
+
 static int rtw8814a_mac_init(struct rtw_dev *rtwdev)
 {
 	struct rtw_usb *rtwusb = rtw_get_usb_priv(rtwdev);
@@ -358,8 +388,9 @@ static int rtw8814a_mac_init(struct rtw_dev *rtwdev)
 
 	rtw_load_table(rtwdev, rtwdev->chip->mac_tbl);
 
-	rtw_write8(rtwdev, REG_AUTO_LLT_V1 + 3,
-		   rtwdev->chip->usb_tx_agg_desc_num << 1);
+	if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_USB)
+		rtw_write8(rtwdev, REG_AUTO_LLT_V1 + 3,
+			   rtwdev->chip->usb_tx_agg_desc_num << 1);
 
 	rtw_write32(rtwdev, REG_HIMR0, 0);
 	rtw_write32(rtwdev, REG_HIMR1, 0);
@@ -415,6 +446,14 @@ static int rtw8814a_mac_init(struct rtw_dev *rtwdev)
 
 		rtw_write8_clr(rtwdev, REG_SW_AMPDU_BURST_MODE_CTRL,
 			       BIT_PRE_TX_CMD);
+	} else if (rtw_hci_type(rtwdev) == RTW_HCI_TYPE_PCIE) {
+		rtw8814ae_enable_rf_1_2v(rtwdev);
+
+		/* Force the antenna b to wifi. */
+		rtw_write8_set(rtwdev, REG_PAD_CTRL1, BIT(2));
+		rtw_write8_set(rtwdev, REG_PAD_CTRL1 + 1, BIT(0));
+		rtw_write8_set(rtwdev, REG_LED_CFG + 3,
+			       (BIT(27) | BIT_DPDT_WL_SEL) >> 24);
 	}
 
 	return 0;
@@ -429,7 +468,8 @@ static void rtw8814a_set_rfe_reg_24g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x72707270);
 		rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x77707770);
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x72);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x72);
 
 		break;
 	case 1:
@@ -438,7 +478,8 @@ static void rtw8814a_set_rfe_reg_24g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x77777777);
 		rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x77777777);
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x77);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x77);
 
 		break;
 	case 0:
@@ -448,7 +489,8 @@ static void rtw8814a_set_rfe_reg_24g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x77777777);
 		/* Is it not necessary to set REG_RFE_PINMUX_D ? */
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x77);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x77);
 
 		break;
 	}
@@ -463,7 +505,8 @@ static void rtw8814a_set_rfe_reg_5g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x37173717);
 		rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x77177717);
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x37);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x37);
 
 		break;
 	case 1:
@@ -472,7 +515,8 @@ static void rtw8814a_set_rfe_reg_5g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x33173317);
 		rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x77177717);
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x33);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x33);
 
 		break;
 	case 0:
@@ -482,7 +526,8 @@ static void rtw8814a_set_rfe_reg_5g(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x54775477);
 		rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x54775477);
 
-		rtw_write32_mask(rtwdev, 0x1ABC, 0x0ff00000, 0x54);
+		rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D,
+				 BIT_RFE_SELSW0_D, 0x54);
 
 		break;
 	}
@@ -693,7 +738,6 @@ static void rtw8814a_set_bw_rf(struct rtw_dev *rtwdev, u8 bw)
 
 static void rtw8814a_adc_clk(struct rtw_dev *rtwdev)
 {
-
 	static const u32 rxiqc_reg[2][4] = {
 		{ REG_RX_IQC_AB_A, REG_RX_IQC_AB_B,
 		  REG_RX_IQC_AB_C, REG_RX_IQC_AB_D },
@@ -709,7 +753,7 @@ static void rtw8814a_adc_clk(struct rtw_dev *rtwdev)
 
 	/* 1 Step1. MAC TX pause */
 	mac_reg_522 = rtw_read8(rtwdev, REG_TXPAUSE);
-	bb_reg_8fc = rtw_read32(rtwdev, 0x8fc);
+	bb_reg_8fc = rtw_read32(rtwdev, REG_DBGSEL);
 	bb_reg_808 = rtw_read32(rtwdev, REG_RXPSEL);
 	rtw_write8(rtwdev, REG_TXPAUSE, 0x3f);
 
@@ -719,13 +763,13 @@ static void rtw8814a_adc_clk(struct rtw_dev *rtwdev)
 		rtw_write32(rtwdev, rxiqc_reg[0][i], 0x0);
 		rtw_write32(rtwdev, rxiqc_reg[1][i], 0x0);
 	}
-	rtw_write32_mask(rtwdev, 0xa14, 0x00000300, 0x3);
+	rtw_write32_mask(rtwdev, REG_PRECTRL, BIT_IQ_WGT, 0x3);
 	i = 0;
 
 	/* 1 Step 3. Monitor MAC IDLE */
-	rtw_write32(rtwdev, 0x8fc, 0x0);
+	rtw_write32(rtwdev, REG_DBGSEL, 0x0);
 	while (mac_active) {
-		mac_active = rtw_read32(rtwdev, 0xfa0) & 0x803e0008;
+		mac_active = rtw_read32(rtwdev, REG_DBGRPT) & 0x803e0008;
 		i++;
 		if (i > 1000)
 			break;
@@ -797,13 +841,13 @@ static void rtw8814a_adc_clk(struct rtw_dev *rtwdev)
 
 	/* 1 Step 5. Recover MAC TX & IQC */
 	rtw_write8(rtwdev, REG_TXPAUSE, mac_reg_522);
-	rtw_write32(rtwdev, 0x8fc, bb_reg_8fc);
+	rtw_write32(rtwdev, REG_DBGSEL, bb_reg_8fc);
 	rtw_write32(rtwdev, REG_RXPSEL, bb_reg_808);
 	for (i = 0; i < 4; i++) {
 		rtw_write32(rtwdev, rxiqc_reg[0][i], rxiqc[i]);
 		rtw_write32(rtwdev, rxiqc_reg[1][i], 0x01000000);
 	}
-	rtw_write32_mask(rtwdev, 0xa14, 0x00000300, 0x0);
+	rtw_write32_mask(rtwdev, REG_PRECTRL, BIT_IQ_WGT, 0x0);
 }
 
 static void rtw8814a_spur_calibration_ch140(struct rtw_dev *rtwdev, u8 channel)
@@ -1241,13 +1285,13 @@ rtw8814a_set_tx_power_index_by_rate(struct rtw_dev *rtwdev, u8 path, u8 rs)
 		txagc_table_wd = 0x00801000;
 		txagc_table_wd |= (pwr_index << 24) | (path << 8) | rate;
 
-		rtw_write32(rtwdev, 0x1998, txagc_table_wd);
+		rtw_write32(rtwdev, REG_AGC_TBL, txagc_table_wd);
 
 		/* first time to turn on the txagc table
 		 * second to write the addr0
 		 */
 		if (rate == DESC_RATE1M)
-			rtw_write32(rtwdev, 0x1998, txagc_table_wd);
+			rtw_write32(rtwdev, REG_AGC_TBL, txagc_table_wd);
 	}
 }
 
@@ -1469,13 +1513,13 @@ static void rtw8814a_iqk_configure_mac(struct rtw_dev *rtwdev)
 	/* CCA off */
 	rtw_write32_mask(rtwdev, REG_CCA2ND, 0xf, 0xe);
 	/* CCK RX path off */
-	rtw_write32_set(rtwdev, 0xa14, BIT(9) | BIT(8));
+	rtw_write32_set(rtwdev, REG_PRECTRL, BIT_IQ_WGT);
 	rtw_write32(rtwdev, REG_RFE_PINMUX_A, 0x77777777);
 	rtw_write32(rtwdev, REG_RFE_PINMUX_B, 0x77777777);
 	rtw_write32(rtwdev, REG_RFE_PINMUX_C, 0x77777777);
 	rtw_write32(rtwdev, REG_RFE_PINMUX_D, 0x77777777);
-	rtw_write32_mask(rtwdev, 0x1abc, 0x0ff00000, 0x77);
-	rtw_write32_mask(rtwdev, 0x910, BIT(23) | BIT(22), 0x0);
+	rtw_write32_mask(rtwdev, REG_RFE_INVSEL_D, BIT_RFE_SELSW0_D, 0x77);
+	rtw_write32_mask(rtwdev, REG_PSD, BIT_PSD_INI, 0x0);
 
 	rtw_write32_mask(rtwdev, REG_RFE_INV0, 0xf, 0x0);
 }
@@ -1545,7 +1589,7 @@ static void rtw8814a_iqk_tx_one_shot(struct rtw_dev *rtwdev, u8 path,
 
 		rtw_write32(rtwdev, 0x1b00, iqk_cmd);
 
-		msleep(10);
+		usleep_range(10000, 11000);
 
 		if (read_poll_timeout(!rtw_read32_mask, *tx_ok, *tx_ok,
 				      1000, 20000, false,
@@ -1610,7 +1654,7 @@ static void rtw8814a_iqk_rx_one_shot(struct rtw_dev *rtwdev, u8 path,
 					    0x54775477);
 				break;
 			case 3:
-				rtw_write32(rtwdev, 0x1abc, 0x75400000);
+				rtw_write32(rtwdev, REG_RFE_INVSEL_D, 0x75400000);
 				rtw_write32(rtwdev, REG_RFE_PINMUX_D,
 					    0x77777777);
 				break;
@@ -1623,7 +1667,7 @@ static void rtw8814a_iqk_rx_one_shot(struct rtw_dev *rtwdev, u8 path,
 
 		rtw_write32(rtwdev, 0x1b00, iqk_cmd);
 
-		msleep(10);
+		usleep_range(10000, 11000);
 
 		if (read_poll_timeout(!rtw_read32_mask, rx_ok, rx_ok,
 				      1000, 20000, false,
@@ -1719,7 +1763,6 @@ static void rtw8814a_iqk(struct rtw_dev *rtwdev)
 
 static void rtw8814a_do_iqk(struct rtw_dev *rtwdev)
 {
-
 	static const u32 backup_mac_reg[MAC_REG_NUM_8814] = {0x520, 0x550};
 	static const u32 backup_bb_reg[BB_REG_NUM_8814] = {
 		0xa14, 0x808, 0x838, 0x90c, 0x810, 0xcb0, 0xeb0,
@@ -1973,8 +2016,6 @@ static void rtw8814a_phy_cck_pd_set(struct rtw_dev *rtwdev, u8 new_lvl)
 	rtw_write8(rtwdev, REG_CCK_PD_TH, pd[new_lvl]);
 }
 
-#ifdef CONFIG_LEDS_CLASS
-
 static void rtw8814a_led_set(struct led_classdev *led,
 			     enum led_brightness brightness)
 {
@@ -1994,8 +2035,6 @@ static void rtw8814a_led_set(struct led_classdev *led,
 	rtw_write32(rtwdev, REG_GPIO_PIN_CTRL_2, led_gpio_cfg);
 }
 
-#endif
-
 static void rtw8814a_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 					  struct rtw_tx_pkt_info *pkt_info,
 					  u8 *txdesc)
@@ -2005,26 +2044,38 @@ static void rtw8814a_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 	fill_txdesc_checksum_common(txdesc, words);
 }
 
-static const struct rtw_intf_phy_para_table phy_para_table_8814a = {};
+static const struct rtw_chip_ops rtw8814a_ops = {
+	.power_on		= rtw_power_on,
+	.power_off		= rtw_power_off,
+	.phy_set_param		= rtw8814a_phy_set_param,
+	.read_efuse		= rtw8814a_read_efuse,
+	.query_phy_status	= rtw8814a_query_phy_status,
+	.set_channel		= rtw8814a_set_channel,
+	.mac_init		= rtw8814a_mac_init,
+	.read_rf		= rtw_phy_read_rf,
+	.write_rf		= rtw_phy_write_rf_reg_sipi,
+	.set_tx_power_index	= rtw8814a_set_tx_power_index,
+	.set_antenna		= NULL,
+	.cfg_ldo25		= rtw8814a_cfg_ldo25,
+	.efuse_grant		= rtw8814a_efuse_grant,
+	.set_ampdu_factor	= rtw8814a_set_ampdu_factor,
+	.false_alarm_statistics	= rtw8814a_false_alarm_statistics,
+	.phy_calibration	= rtw8814a_phy_calibration,
+	.cck_pd_set		= rtw8814a_phy_cck_pd_set,
+	.pwr_track		= rtw8814a_pwr_track,
+	.config_bfee		= NULL,
+	.set_gid_table		= NULL,
+	.cfg_csi_rate		= NULL,
+	.led_set		= rtw8814a_led_set,
+	.fill_txdesc_checksum	= rtw8814a_fill_txdesc_checksum,
 
-static const struct rtw_hw_reg rtw8814a_dig[] = {
-	[0] = { .addr = 0xc50, .mask = 0x7f },
-	[1] = { .addr = 0xe50, .mask = 0x7f },
-	[2] = { .addr = 0x1850, .mask = 0x7f },
-	[3] = { .addr = 0x1a50, .mask = 0x7f },
-};
-
-static const struct rtw_page_table page_table_8814a[] = {
-	/* SDIO */
-	{0, 0, 0, 0, 0},	/* hq nq lq exq gapq */
-	/* PCIE */
-	{32, 32, 32, 32, 0},
-	/* USB, 2 bulk out */
-	{32, 32, 32, 32, 0},
-	/* USB, 3 bulk out */
-	{32, 32, 32, 32, 0},
-	/* USB, 4 bulk out */
-	{32, 32, 32, 32, 0},
+	.coex_set_init		= rtw8814a_coex_cfg_init,
+	.coex_set_ant_switch	= rtw8814a_coex_cfg_ant_switch,
+	.coex_set_gnt_fix	= rtw8814a_coex_cfg_gnt_fix,
+	.coex_set_gnt_debug	= rtw8814a_coex_cfg_gnt_debug,
+	.coex_set_rfe_type	= rtw8814a_coex_cfg_rfe_type,
+	.coex_set_wl_tx_power	= rtw8814a_coex_cfg_wl_tx_power,
+	.coex_set_wl_rx_gain	= rtw8814a_coex_cfg_wl_rx_gain,
 };
 
 static const struct rtw_rqpn rqpn_table_8814a[] = {
@@ -2035,7 +2086,7 @@ static const struct rtw_rqpn rqpn_table_8814a[] = {
 	/* PCIE */
 	{RTW_DMA_MAPPING_HIGH, RTW_DMA_MAPPING_NORMAL,
 	 RTW_DMA_MAPPING_LOW, RTW_DMA_MAPPING_LOW,
-	 RTW_DMA_MAPPING_EXTRA, RTW_DMA_MAPPING_HIGH},
+	 RTW_DMA_MAPPING_HIGH, RTW_DMA_MAPPING_HIGH},
 	/* USB, 2 bulk out */
 	{RTW_DMA_MAPPING_HIGH, RTW_DMA_MAPPING_HIGH,
 	 RTW_DMA_MAPPING_NORMAL, RTW_DMA_MAPPING_NORMAL,
@@ -2066,40 +2117,35 @@ static const struct rtw_prioq_addrs prioq_addrs_8814a = {
 	.wsize = true,
 };
 
-static const struct rtw_chip_ops rtw8814a_ops = {
-	.power_on		= rtw_power_on,
-	.power_off		= rtw_power_off,
-	.phy_set_param		= rtw8814a_phy_set_param,
-	.read_efuse		= rtw8814a_read_efuse,
-	.query_phy_status	= rtw8814a_query_phy_status,
-	.set_channel		= rtw8814a_set_channel,
-	.mac_init		= rtw8814a_mac_init,
-	.read_rf		= rtw_phy_read_rf,
-	.write_rf		= rtw_phy_write_rf_reg_sipi,
-	.set_tx_power_index	= rtw8814a_set_tx_power_index,
-	.set_antenna		= NULL,
-	.cfg_ldo25		= rtw8814a_cfg_ldo25,
-	.efuse_grant		= rtw8814a_efuse_grant,
-	.set_ampdu_factor	= rtw8814a_set_ampdu_factor,
-	.false_alarm_statistics	= rtw8814a_false_alarm_statistics,
-	.phy_calibration	= rtw8814a_phy_calibration,
-	.cck_pd_set		= rtw8814a_phy_cck_pd_set,
-	.pwr_track		= rtw8814a_pwr_track,
-	.config_bfee		= NULL,
-	.set_gid_table		= NULL,
-	.cfg_csi_rate		= NULL,
-#ifdef CONFIG_LEDS_CLASS
-	.led_set		= rtw8814a_led_set,
-#endif
-	.fill_txdesc_checksum	= rtw8814a_fill_txdesc_checksum,
+static const struct rtw_page_table page_table_8814a[] = {
+	/* SDIO */
+	{0, 0, 0, 0, 0},	/* hq nq lq exq gapq */
+	/* PCIE */
+	{32, 32, 32, 32, 0},
+	/* USB, 2 bulk out */
+	{32, 32, 32, 32, 0},
+	/* USB, 3 bulk out */
+	{32, 32, 32, 32, 0},
+	/* USB, 4 bulk out */
+	{32, 32, 32, 32, 0},
+};
 
-	.coex_set_init		= rtw8814a_coex_cfg_init,
-	.coex_set_ant_switch	= rtw8814a_coex_cfg_ant_switch,
-	.coex_set_gnt_fix	= rtw8814a_coex_cfg_gnt_fix,
-	.coex_set_gnt_debug	= rtw8814a_coex_cfg_gnt_debug,
-	.coex_set_rfe_type	= rtw8814a_coex_cfg_rfe_type,
-	.coex_set_wl_tx_power	= rtw8814a_coex_cfg_wl_tx_power,
-	.coex_set_wl_rx_gain	= rtw8814a_coex_cfg_wl_rx_gain,
+static const struct rtw_intf_phy_para_table phy_para_table_8814a = {};
+
+static const struct rtw_hw_reg rtw8814a_dig[] = {
+	[0] = { .addr = 0xc50, .mask = 0x7f },
+	[1] = { .addr = 0xe50, .mask = 0x7f },
+	[2] = { .addr = 0x1850, .mask = 0x7f },
+	[3] = { .addr = 0x1a50, .mask = 0x7f },
+};
+
+static const struct rtw_rfe_def rtw8814a_rfe_defs[] = {
+	[0] = { .phy_pg_tbl	= &rtw8814a_bb_pg_type0_tbl,
+		.txpwr_lmt_tbl	= &rtw8814a_txpwr_lmt_type0_tbl,
+		.pwr_track_tbl	= &rtw8814a_rtw_pwrtrk_type0_tbl },
+	[1] = { .phy_pg_tbl	= &rtw8814a_bb_pg_tbl,
+		.txpwr_lmt_tbl	= &rtw8814a_txpwr_lmt_type1_tbl,
+		.pwr_track_tbl	= &rtw8814a_rtw_pwrtrk_tbl },
 };
 
 /* rssi in percentage % (dbm = % - 100) */
@@ -2127,15 +2173,6 @@ static const struct coex_rf_para rf_para_rx_8814a[] = {
 
 static_assert(ARRAY_SIZE(rf_para_tx_8814a) == ARRAY_SIZE(rf_para_rx_8814a));
 
-static const struct rtw_rfe_def rtw8814a_rfe_defs[] = {
-	[0] = { .phy_pg_tbl	= &rtw8814a_bb_pg_type0_tbl,
-		.txpwr_lmt_tbl	= &rtw8814a_txpwr_lmt_type0_tbl,
-		.pwr_track_tbl	= &rtw8814a_rtw_pwrtrk_type0_tbl },
-	[1] = { .phy_pg_tbl	= &rtw8814a_bb_pg_tbl,
-		.txpwr_lmt_tbl	= &rtw8814a_txpwr_lmt_type1_tbl,
-		.pwr_track_tbl	= &rtw8814a_rtw_pwrtrk_tbl },
-};
-
 const struct rtw_chip_info rtw8814a_hw_spec = {
 	.ops = &rtw8814a_ops,
 	.id = RTW_CHIP_TYPE_8814A,
@@ -2160,11 +2197,11 @@ const struct rtw_chip_info rtw8814a_hw_spec = {
 	.rx_ldpc = true,
 	.max_power_index = 0x3f,
 	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_2,
+	.amsdu_in_ampdu = false,
 	.usb_tx_agg_desc_num = 3,
 	.hw_feature_report = false,
 	.c2h_ra_report_size = 6,
 	.old_datarate_fb_limit = false,
-	.tx_report_sn = true,
 	.ht_supported = true,
 	.vht_supported = true,
 	.lps_deep_mode_supported = BIT(LPS_DEEP_MODE_LCLK),
@@ -2224,6 +2261,6 @@ EXPORT_SYMBOL(rtw8814a_hw_spec);
 
 MODULE_FIRMWARE("rtw88/rtw8814a_fw.bin");
 
-MODULE_AUTHOR("Realtek Corporation");
+MODULE_AUTHOR("Bitterblue Smith <rtl8821cerfe2@gmail.com>");
 MODULE_DESCRIPTION("Realtek 802.11ac wireless 8814a driver");
 MODULE_LICENSE("Dual BSD/GPL");

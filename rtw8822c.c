@@ -2746,7 +2746,7 @@ static void rtw8822c_set_tx_power_index(struct rtw_dev *rtwdev)
 	s8 diff_idx[4];
 
 	rtw8822c_set_write_tx_power_ref(rtwdev, pwr_ref_cck, pwr_ref_ofdm);
-	for (rs = 0; rs < RTW_RATE_SECTION_HT_3S; rs++) {
+	for (rs = 0; rs <= __RTW_RATE_SECTION_2SS_MAX; rs++) {
 		for (j = 0; j < rtw_rate_size[rs]; j++) {
 			rate = rtw_rate_section[rs][j];
 			pwr_a = hal->tx_pwr_tbl[RF_PATH_A][rate];
@@ -4542,8 +4542,6 @@ static void rtw8822c_adaptivity(struct rtw_dev *rtwdev)
 	rtw_phy_set_edcca_th(rtwdev, l2h, h2l);
 }
 
-#ifdef CONFIG_LEDS_CLASS
-
 static void rtw8822c_led_set(struct led_classdev *led,
 			     enum led_brightness brightness)
 {
@@ -4561,8 +4559,6 @@ static void rtw8822c_led_set(struct led_classdev *led,
 
 	rtw_write32(rtwdev, REG_LED_CFG, ledcfg);
 }
-
-#endif
 
 static void rtw8822c_fill_txdesc_checksum(struct rtw_dev *rtwdev,
 					  struct rtw_tx_pkt_info *pkt_info,
@@ -4992,9 +4988,7 @@ static const struct rtw_chip_ops rtw8822c_ops = {
 	.cfo_track		= rtw8822c_cfo_track,
 	.config_tx_path		= rtw8822c_config_tx_path,
 	.config_txrx_mode	= rtw8822c_config_trx_mode,
-#ifdef CONFIG_LEDS_CLASS
 	.led_set		= rtw8822c_led_set,
-#endif
 	.fill_txdesc_checksum	= rtw8822c_fill_txdesc_checksum,
 
 	.coex_set_init		= rtw8822c_coex_cfg_init,
@@ -5354,23 +5348,18 @@ const struct rtw_chip_info rtw8822c_hw_spec = {
 	.rxff_size = 24576,
 	.fw_rxff_size = 12288,
 	.rsvd_drv_pg_num = 16,
-	.band = RTW_BAND_2G | RTW_BAND_5G,
-	.page_size = TX_PAGE_SIZE,
-	.csi_buf_pg_num = 50,
-	.dig_min = 0x20,
 	.txgi_factor = 2,
 	.is_pwr_by_rate_dec = false,
-	.rx_ldpc = true,
-	.tx_stbc = true,
 	.max_power_index = 0x7f,
-	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_2,
-	.fw_fifo_addr = {0x780, 0x700, 0x780, 0x660, 0x650, 0x680},
-	.fwcd_segs = &rtw8822c_fwcd_segs,
+	.csi_buf_pg_num = 50,
+	.band = RTW_BAND_2G | RTW_BAND_5G,
+	.page_size = TX_PAGE_SIZE,
+	.dig_min = 0x20,
+	.amsdu_in_ampdu = true,
 	.usb_tx_agg_desc_num = 3,
 	.hw_feature_report = true,
 	.c2h_ra_report_size = 7,
 	.old_datarate_fb_limit = false,
-	.tx_report_sn = true,
 	.default_1ss_tx_path = BB_PATH_A,
 	.path_div_supported = true,
 	.ht_supported = true,
@@ -5379,9 +5368,9 @@ const struct rtw_chip_info rtw8822c_hw_spec = {
 	.sys_func_en = 0xD8,
 	.pwr_on_seq = card_enable_flow_8822c,
 	.pwr_off_seq = card_disable_flow_8822c,
+	.page_table = page_table_8822c,
 	.rqpn_table = rqpn_table_8822c,
 	.prioq_addrs = &prioq_addrs_8822c,
-	.page_table = page_table_8822c,
 	.intf_table = &phy_para_table_8822c,
 	.dig = rtw8822c_dig,
 	.dig_cck = NULL,
@@ -5391,8 +5380,8 @@ const struct rtw_chip_info rtw8822c_hw_spec = {
 	.mac_tbl = &rtw8822c_mac_tbl,
 	.agc_tbl = &rtw8822c_agc_tbl,
 	.bb_tbl = &rtw8822c_bb_tbl,
-	.rf_tbl = {&rtw8822c_rf_b_tbl, &rtw8822c_rf_a_tbl},
 	.rfk_init_tbl = &rtw8822c_array_mp_cal_init_tbl,
+	.rf_tbl = {&rtw8822c_rf_b_tbl, &rtw8822c_rf_a_tbl},
 	.rfe_defs = rtw8822c_rfe_defs,
 	.rfe_defs_size = ARRAY_SIZE(rtw8822c_rfe_defs),
 	.en_dis_dpd = true,
@@ -5401,9 +5390,12 @@ const struct rtw_chip_info rtw8822c_hw_spec = {
 	.lck_threshold = 8,
 	.bfer_su_max_num = 2,
 	.bfer_mu_max_num = 1,
+	.rx_ldpc = true,
+	.tx_stbc = true,
 	.edcca_th = rtw8822c_edcca_th,
 	.l2h_th_ini_cs = 60,
 	.l2h_th_ini_ad = 45,
+	.ampdu_density = IEEE80211_HT_MPDU_DENSITY_2,
 
 #ifdef CONFIG_PM
 	.wow_fw_name = "rtw88/rtw8822c_wow_fw.bin",
@@ -5442,6 +5434,8 @@ const struct rtw_chip_info rtw8822c_hw_spec = {
 	.coex_info_hw_regs_num = ARRAY_SIZE(coex_info_hw_regs_8822c),
 	.coex_info_hw_regs = coex_info_hw_regs_8822c,
 
+	.fw_fifo_addr = {0x780, 0x700, 0x780, 0x660, 0x650, 0x680},
+	.fwcd_segs = &rtw8822c_fwcd_segs,
 };
 EXPORT_SYMBOL(rtw8822c_hw_spec);
 

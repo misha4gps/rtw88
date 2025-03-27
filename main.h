@@ -198,7 +198,7 @@ enum rtw_hci_type {
 };
 
 struct rtw_hci {
-	struct rtw_hci_ops *ops;
+	const struct rtw_hci_ops *ops;
 	enum rtw_hci_type type;
 
 	u32 rpwm_addr;
@@ -303,13 +303,14 @@ enum rtw_rate_section {
 	RTW_RATE_SECTION_HT_2S,
 	RTW_RATE_SECTION_VHT_1S,
 	RTW_RATE_SECTION_VHT_2S,
+	__RTW_RATE_SECTION_2SS_MAX = RTW_RATE_SECTION_VHT_2S,
 	RTW_RATE_SECTION_HT_3S,
 	RTW_RATE_SECTION_HT_4S,
 	RTW_RATE_SECTION_VHT_3S,
 	RTW_RATE_SECTION_VHT_4S,
 
 	/* keep last */
-	RTW_RATE_SECTION_MAX,
+	RTW_RATE_SECTION_NUM,
 };
 
 enum rtw_wireless_set {
@@ -1037,9 +1038,7 @@ struct rtw_chip_ops {
 			       bool is_tx2_path);
 	void (*config_txrx_mode)(struct rtw_dev *rtwdev, u8 tx_path,
 				 u8 rx_path, bool is_tx2_path);
-#ifdef CONFIG_LEDS_CLASS
 	void (*led_set)(struct led_classdev *led, enum led_brightness brightness);
-#endif
 	/* for USB/SDIO only */
 	void (*fill_txdesc_checksum)(struct rtw_dev *rtwdev,
 				     struct rtw_tx_pkt_info *pkt_info,
@@ -1251,8 +1250,8 @@ enum rtw_rfe_fem {
 struct rtw_rfe_def {
 	const struct rtw_table *phy_pg_tbl;
 	const struct rtw_table *txpwr_lmt_tbl;
-	const struct rtw_table *agc_btg_tbl;
 	const struct rtw_pwr_track_tbl *pwr_track_tbl;
+	const struct rtw_table *agc_btg_tbl;
 };
 
 #define RTW_DEF_RFE(chip, bb_pg, pwrlmt, track) {				  \
@@ -1368,11 +1367,11 @@ struct rtw_chip_info {
 	u16 fw_fifo_addr[RTW_FW_FIFO_MAX];
 	const struct rtw_fwcd_segs *fwcd_segs;
 
+	bool amsdu_in_ampdu;
 	u8 usb_tx_agg_desc_num;
 	bool hw_feature_report;
 	u8 c2h_ra_report_size;
 	bool old_datarate_fb_limit;
-	bool tx_report_sn;
 
 	u8 default_1ss_tx_path;
 
@@ -2090,7 +2089,7 @@ union rtw_sar_cfg {
 
 struct rtw_sar {
 	enum rtw_sar_sources src;
-	union rtw_sar_cfg cfg[RTW_RF_PATH_MAX][RTW_RATE_SECTION_MAX];
+	union rtw_sar_cfg cfg[RTW_RF_PATH_MAX][RTW_RATE_SECTION_NUM];
 };
 
 struct rtw_hal {
@@ -2134,16 +2133,16 @@ struct rtw_hal {
 	s8 tx_pwr_by_rate_offset_5g[RTW_RF_PATH_MAX]
 				   [DESC_RATE_MAX];
 	s8 tx_pwr_by_rate_base_2g[RTW_RF_PATH_MAX]
-				 [RTW_RATE_SECTION_MAX];
+				 [RTW_RATE_SECTION_NUM];
 	s8 tx_pwr_by_rate_base_5g[RTW_RF_PATH_MAX]
-				 [RTW_RATE_SECTION_MAX];
+				 [RTW_RATE_SECTION_NUM];
 	s8 tx_pwr_limit_2g[RTW_REGD_MAX]
 			  [RTW_CHANNEL_WIDTH_MAX]
-			  [RTW_RATE_SECTION_MAX]
+			  [RTW_RATE_SECTION_NUM]
 			  [RTW_MAX_CHANNEL_NUM_2G];
 	s8 tx_pwr_limit_5g[RTW_REGD_MAX]
 			  [RTW_CHANNEL_WIDTH_MAX]
-			  [RTW_RATE_SECTION_MAX]
+			  [RTW_RATE_SECTION_NUM]
 			  [RTW_MAX_CHANNEL_NUM_5G];
 	s8 tx_pwr_tbl[RTW_RF_PATH_MAX]
 		     [DESC_RATE_MAX];
@@ -2264,11 +2263,9 @@ struct rtw_dev {
 	struct completion fw_scan_density;
 	bool ap_active;
 
-#ifdef CONFIG_LEDS_CLASS
 	bool led_registered;
 	char led_name[32];
 	struct led_classdev led_cdev;
-#endif
 
 	/* hci related data, must be last */
 	u8 priv[] __aligned(sizeof(void *));
